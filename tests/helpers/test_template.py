@@ -6236,3 +6236,61 @@ async def test_template_thread_safety_checks(hass: HomeAssistant) -> None:
         await hass.async_add_executor_job(template_obj.async_render_to_info)
 
     assert template_obj.async_render_to_info().result() == 23
+
+
+async def test_merge_response(hass: HomeAssistant) -> None:
+    """Test the merge_response function/filter."""
+
+    service_response = {
+        "calendar.sports": {
+            "events": [
+                {
+                    "start": "2024-02-26T17:00:00-06:00",
+                    "end": "2024-02-26T18:00:00-06:00",
+                    "summary": "Basketball vs. Rockets",
+                    "description": "",
+                }
+            ]
+        },
+        "calendar.local_furry_events": {"events": []},
+        "calendar.yap_house_schedules": {
+            "events": [
+                {
+                    "start": "2024-02-26T08:00:00-06:00",
+                    "end": "2024-02-26T09:00:00-06:00",
+                    "summary": "Dr. Appt",
+                    "description": "",
+                },
+                {
+                    "start": "2024-02-26T20:00:00-06:00",
+                    "end": "2024-02-26T21:00:00-06:00",
+                    "summary": "Bake a cake",
+                    "description": "something good",
+                },
+            ]
+        },
+        "calendar.personal": {"events": []},
+    }
+    _template = "{{ merge_response(" + str(service_response) + ") }}"
+
+    tpl = template.Template(_template, hass)
+    assert tpl.async_render() == [
+        {
+            "start": "2024-02-26T17:00:00-06:00",
+            "end": "2024-02-26T18:00:00-06:00",
+            "summary": "Basketball vs. Rockets",
+            "description": "",
+        },
+        {
+            "start": "2024-02-26T08:00:00-06:00",
+            "end": "2024-02-26T09:00:00-06:00",
+            "summary": "Dr. Appt",
+            "description": "",
+        },
+        {
+            "start": "2024-02-26T20:00:00-06:00",
+            "end": "2024-02-26T21:00:00-06:00",
+            "summary": "Bake a cake",
+            "description": "something good",
+        },
+    ]
