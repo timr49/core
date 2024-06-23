@@ -86,6 +86,10 @@ class OpenAIConversationEntity(
             model="ChatGPT",
             entry_type=dr.DeviceEntryType.SERVICE,
         )
+        if self.entry.options.get(CONF_LLM_HASS_API):
+            self._attr_supported_features = (
+                conversation.ConversationEntityFeature.API_ACCESS
+            )
 
     @property
     def supported_languages(self) -> list[str] | Literal["*"]:
