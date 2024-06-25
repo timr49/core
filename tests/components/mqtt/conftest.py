@@ -3,7 +3,7 @@
 import asyncio
 from random import getrandbits
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from typing_extensions import AsyncGenerator, Generator
@@ -121,3 +121,10 @@ def record_calls(recorded_calls: list[ReceiveMessage]) -> MessageCallbackType:
         recorded_calls.append(msg)
 
     return record_calls
+
+
+@pytest.fixture
+def tag_mock() -> Generator[AsyncMock]:
+    """Fixture to mock tag."""
+    with patch("homeassistant.components.tag.async_scan_tag") as mock_tag:
+        yield mock_tag
