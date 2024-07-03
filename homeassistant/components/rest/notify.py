@@ -173,7 +173,14 @@ class RestNotificationService(BaseNotificationService):
                 if not isinstance(value, Template):
                     return value
                 value.hass = self._hass
-                return value.async_render(kwargs, parse_result=False)
+                result = value.async_render(kwargs, parse_result=True)
+                _LOGGER.debug(
+                    "_data_template_creator(value=%s) value.async_render()=%s of type=%s",
+                    value,
+                    result,
+                    type(result),
+                )
+                return result
 
             if self._data:
                 data.update(_data_template_creator(self._data))
@@ -191,6 +198,7 @@ class RestNotificationService(BaseNotificationService):
                 auth=self._auth or httpx.USE_CLIENT_DEFAULT,
             )
         elif self._method == "POST_JSON":
+            _LOGGER.debug("async_send_message() POSTing JSON data=%s", data)
             response = await websession.post(
                 self._resource,
                 headers=self._headers,
@@ -235,6 +243,7 @@ class RestNotificationService(BaseNotificationService):
                 response.status_code,
                 response.reason_phrase,
             )
+            _LOGGER.debug("response.text=\n%s", response.text)
         else:
             _LOGGER.debug(
                 "Response %d: %s:", response.status_code, response.reason_phrase

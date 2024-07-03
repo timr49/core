@@ -1,17 +1,38 @@
 """The tests for the rest.notify platform."""
 
+import json
+import logging
 from unittest.mock import patch
 
+import pytest
 import respx
 
 from homeassistant import config as hass_config
 from homeassistant.components import notify
 from homeassistant.components.rest import DOMAIN
-from homeassistant.const import SERVICE_RELOAD
+from homeassistant.components.rest.notify import (
+    CONF_DATA_TEMPLATE,
+    CONF_MESSAGE_PARAMETER_NAME,
+    RestNotificationService,
+    async_get_service,
+)
+from homeassistant.const import (
+    CONF_HEADERS,
+    CONF_METHOD,
+    CONF_NAME,
+    CONF_PLATFORM,
+    CONF_RESOURCE,
+    CONF_VERIFY_SSL,
+    CONTENT_TYPE_JSON,
+    SERVICE_RELOAD,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.common import get_fixture_path
+
+_LOGGER = logging.getLogger(__name__)
+_LOGGER.setLevel(logging.DEBUG)
 
 
 @respx.mock
@@ -49,3 +70,65 @@ async def test_reload_notify(hass: HomeAssistant) -> None:
 
     assert not hass.services.has_service(notify.DOMAIN, DOMAIN)
     assert hass.services.has_service(notify.DOMAIN, "rest_reloaded")
+
+
+@respx.mock
+async def test_notify_data_types(hass: HomeAssistant) -> None:
+    """Verify the correct data types are sent."""
+
+    resource = "http://127.0.0.1/notify"
+    route = respx.post(resource)
+
+    # Create an instance of RestNotificationService using data templates with multiple member types.
+    data_template = {
+        "icon": "smiley",
+        "priority": 42,
+        "urgent": True,
+    }
+    config = {
+        CONF_PLATFORM: DOMAIN,
+        CONF_NAME: "test_notify_data_types",
+        CONF_RESOURCE: resource,
+        CONF_METHOD: "POST_JSON",
+        CONF_MESSAGE_PARAMETER_NAME: "message",
+        CONF_DATA_TEMPLATE: data_template,
+        CONF_VERIFY_SSL: False,
+        CONF_HEADERS: {
+            "Content-Type": CONTENT_TYPE_JSON,
+        },
+    }
+    rns: RestNotificationService = await async_get_service(
+        hass,
+        config=config,
+    )
+    await hass.async_block_till_done()
+
+    # Send an HTTP request and confirm that it was mocked by RESPX.
+    await rns.async_send_message(message="my message")
+    await hass.async_block_till_done()
+    assert route.called
+
+    # Retrieve the most recent request content and convert it from stringified json to a dict.
+    _LOGGER.debug(
+        "type(route.calls.last.request.content=%s route.calls.last.request.content=%s",
+        type(route.calls.last.request.content),
+        route.calls.last.request.content,
+    )
+    response_payload = json.loads(route.calls.last.request.content)
+    assert isinstance(response_payload, dict)
+
+    # Compare the (now dict) request content to the original data template.
+    assert len(response_payload) == len(data_template) + 1  # The +1 is for "message".
+    for key, value in data_template.items():
+        _LOGGER.debug(
+            "key=%s response_payload[key]=%s data_template[key]=%s type(response_payload[key])=%s type(data_template[key])=%s",
+            key,
+            response_payload[key],
+            value,
+            type(response_payload[key]),
+            type(value),
+        )
+        assert type(response_payload[key]) == type(value)
+        assert response_payload[key] == value
+
+    pytest.fail("forced failure so that we see stdout")
