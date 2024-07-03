@@ -27,12 +27,13 @@ from homeassistant.const import (
     SERVICE_RELOAD,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.template import Template
 from homeassistant.setup import async_setup_component
 
 from tests.common import get_fixture_path
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.DEBUG)
+_LOGGER.setLevel(logging.INFO)
 
 
 @respx.mock
@@ -79,12 +80,31 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
     resource = "http://127.0.0.1/notify"
     route = respx.post(resource)
 
-    # Create an instance of RestNotificationService using data templates with multiple member types.
+    # Create and cross-check the inputs and expected outputs.
     data_template = {
-        "icon": "smiley",
-        "priority": 42,
-        "urgent": True,
+        "str1": "spam",
+        "str2": Template('{{ "egg" }}', hass),
+        "int1": 41,
+        "int2": Template("{{ 42 }}", hass),
+        "float1": 3.14156,
+        "float2": Template("{{ 2.71828 }}", hass),
+        "bool1": False,
+        "bool2": Template("{{ True }}", hass),
     }
+    expected_result = {
+        "str1": {"value": "spam", "type": str},
+        "str2": {"value": "egg", "type": str},
+        "int1": {"value": 41, "type": int},
+        "int2": {"value": 42, "type": int},
+        "float1": {"value": 3.14156, "type": float},
+        "float2": {"value": 2.71828, "type": float},
+        "bool1": {"value": False, "type": bool},
+        "bool2": {"value": True, "type": bool},
+    }
+    for key in data_template:
+        assert expected_result[key] is not None
+
+    # Create an instance of RestNotificationService using the dict of data templates.
     config = {
         CONF_PLATFORM: DOMAIN,
         CONF_NAME: "test_notify_data_types",
@@ -108,27 +128,28 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert route.called
 
-    # Retrieve the most recent request content and convert it from stringified json to a dict.
-    _LOGGER.debug(
-        "type(route.calls.last.request.content=%s route.calls.last.request.content=%s",
-        type(route.calls.last.request.content),
-        route.calls.last.request.content,
-    )
-    response_payload = json.loads(route.calls.last.request.content)
-    assert isinstance(response_payload, dict)
+    # Retrieve the most recent request content and convert it from stringified json to a dict for ready access.
+    try:
+        request_content = json.loads(route.calls.last.request.content)
+    except json.JSONDecodeError:
+        _LOGGER.error(
+            "Request content is invalid JSON: %s", route.calls.last.request.content
+        )
+        pytest.fail("request content is invalid JSON")
+    assert isinstance(request_content, dict)
 
     # Compare the (now dict) request content to the original data template.
-    assert len(response_payload) == len(data_template) + 1  # The +1 is for "message".
+    assert len(request_content) == len(data_template) + 1  # The +1 is for "message".
     for key, value in data_template.items():
         _LOGGER.debug(
-            "key=%s response_payload[key]=%s data_template[key]=%s type(response_payload[key])=%s type(data_template[key])=%s",
+            "key=%s request_content[key]=%s data_template[key]=%s type(request_content[key])=%s type(data_template[key])=%s",
             key,
-            response_payload[key],
+            request_content[key],
             value,
-            type(response_payload[key]),
+            type(request_content[key]),
             type(value),
         )
-        assert type(response_payload[key]) == type(value)
-        assert response_payload[key] == value
-
-    pytest.fail("forced failure so that we see stdout")
+        assert isinstance(
+            request_content[key], expected_result[key]["type"]
+        ), "incorrect type"
+        assert request_content[key] == expected_result[key]["value"], "incorrect value"
