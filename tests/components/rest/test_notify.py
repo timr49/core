@@ -33,7 +33,8 @@ from homeassistant.setup import async_setup_component
 from tests.common import get_fixture_path
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.INFO)
+_LOGGER.setLevel(logging.DEBUG)
+logging.getLogger("homeassistant.components.rest.notify").setLevel(logging.DEBUG)
 
 
 @respx.mock
@@ -77,6 +78,8 @@ async def test_reload_notify(hass: HomeAssistant) -> None:
 async def test_notify_data_types(hass: HomeAssistant) -> None:
     """Verify the correct data types are sent."""
 
+    _LOGGER.debug("__name__=%s", __name__)
+
     resource = "http://127.0.0.1/notify"
     route = respx.post(resource)
 
@@ -84,22 +87,32 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
     data_template = {
         "str1": "spam",
         "str2": Template('{{ "egg" }}', hass),
+        "str3": "39",
+        "str4": Template('{{ "40" }}', hass),
+        "str5": Template('{{ "True" }}', hass),
         "int1": 41,
         "int2": Template("{{ 42 }}", hass),
+        "int3": Template("{{ 40 + 3 }}", hass),
         "float1": 3.14156,
         "float2": Template("{{ 2.71828 }}", hass),
         "bool1": False,
         "bool2": Template("{{ True }}", hass),
+        "bool3": Template("{{ not True }}", hass),
     }
     expected_result = {
         "str1": {"value": "spam", "type": str},
         "str2": {"value": "egg", "type": str},
+        "str3": {"value": "39", "type": str},
+        "str4": {"value": "40", "type": str},
+        "str5": {"value": "True", "type": str},
         "int1": {"value": 41, "type": int},
         "int2": {"value": 42, "type": int},
+        "int3": {"value": 43, "type": int},
         "float1": {"value": 3.14156, "type": float},
         "float2": {"value": 2.71828, "type": float},
         "bool1": {"value": False, "type": bool},
         "bool2": {"value": True, "type": bool},
+        "bool3": {"value": False, "type": bool},
     }
     for key in data_template:
         assert expected_result[key] is not None
