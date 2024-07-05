@@ -38,7 +38,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 CONF_DATA = "data"
 CONF_DATA_TEMPLATE = "data_template"
-CONF_DATA_TYPES = "types"
+CONF_DATA_TYPES = "data_types"
 CONF_MESSAGE_PARAMETER_NAME = "message_param_name"
 CONF_TARGET_PARAMETER_NAME = "target_param_name"
 CONF_TITLE_PARAMETER_NAME = "title_param_name"
@@ -62,6 +62,7 @@ PLATFORM_SCHEMA = NOTIFY_PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TITLE_PARAMETER_NAME): cv.string,
         vol.Optional(CONF_DATA): vol.All(dict, cv.template_complex),
         vol.Optional(CONF_DATA_TEMPLATE): vol.All(dict, cv.template_complex),
+        vol.Optional(CONF_DATA_TYPES): vol.All(dict, cv.template_complex),
         vol.Optional(CONF_AUTHENTICATION): vol.In(
             [HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION]
         ),
@@ -89,6 +90,7 @@ async def async_get_service(
     target_param_name: str | None = config.get(CONF_TARGET_PARAMETER_NAME)
     data: dict[str, Any] | None = config.get(CONF_DATA)
     data_template: dict[str, Any] | None = config.get(CONF_DATA_TEMPLATE)
+    data_types: dict[str, Any] | None = config.get(CONF_DATA_TYPES)
     username: str | None = config.get(CONF_USERNAME)
     password: str | None = config.get(CONF_PASSWORD)
     verify_ssl: bool = config[CONF_VERIFY_SSL]
@@ -112,6 +114,7 @@ async def async_get_service(
         data_template,
         auth,
         verify_ssl,
+        data_types,
     )
 
 
@@ -132,6 +135,7 @@ class RestNotificationService(BaseNotificationService):
         data_template: dict[str, Any] | None,
         auth: httpx.Auth | None,
         verify_ssl: bool,
+        data_types: dict[str, Any] | None,
     ) -> None:
         """Initialize the service."""
         self._resource = resource
@@ -146,13 +150,7 @@ class RestNotificationService(BaseNotificationService):
         self._data_template = data_template
         self._auth = auth
         self._verify_ssl = verify_ssl
-        self._data_types = {}
-        if self._data and isinstance(self._data, dict):
-            self._data_types = dict(self._data[CONF_DATA_TYPES])
-            del self._data[CONF_DATA_TYPES]
-        if self._data_template and isinstance(self._data_template, dict):
-            self._data_types = dict(self._data_template[CONF_DATA_TYPES])
-            del self._data_template[CONF_DATA_TYPES]
+        self._data_types = data_types if data_types else {}
 
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
         """Send a message to a user."""

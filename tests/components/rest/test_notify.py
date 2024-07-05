@@ -12,6 +12,7 @@ from homeassistant.components import notify
 from homeassistant.components.rest import DOMAIN
 from homeassistant.components.rest.notify import (
     CONF_DATA_TEMPLATE,
+    CONF_DATA_TYPES,
     CONF_MESSAGE_PARAMETER_NAME,
     CONF_TARGET_PARAMETER_NAME,
     CONF_TITLE_PARAMETER_NAME,
@@ -36,7 +37,7 @@ from tests.common import get_fixture_path
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.INFO)
-logging.getLogger("homeassistant.components.rest.notify").setLevel(logging.INFO)
+logging.getLogger("homeassistant.components.rest.notify").setLevel(logging.DEBUG)
 
 
 @respx.mock
@@ -93,25 +94,25 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "int1": 41,
         "int2": Template("{{ 42 }}", hass),
         "int3": Template("{{ 40 + 3 }}", hass),
-        "int4": "4x4",
+        "int4": "4x4",  # The string is not an integer.
         "float1": 3.14159,
         "float2": Template("{{ 2.71828 }}", hass),
         "float3": "1.61803",
         "bool1": False,
         "bool2": Template("{{ True }}", hass),
         "bool3": Template("{{ not True }}", hass),
-        "types": {
-            "int1": "int",
-            "int2": "int",
-            "int3": "int",
-            "int4": "int",
-            "float1": "float",
-            "float2": "float",
-            "float3": "float",
-            "bool1": "bool",
-            "bool2": "bool",
-            "bool3": "bool",
-        },
+    }
+    data_types = {
+        "int1": "int",
+        "int2": "int",
+        "int3": "int",
+        "int4": "int",
+        "float1": "float",
+        "float2": "float",
+        "float3": "float",
+        "bool1": "bool",
+        "bool2": "bool",
+        "bool3": "boolean",  # Type "boolean" is not supported.
     }
     expected_result = {
         "str1": {"value": "spam", "type": str},
@@ -122,18 +123,20 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "int1": {"value": 41, "type": int},
         "int2": {"value": 42, "type": int},
         "int3": {"value": 43, "type": int},
-        "int4": {"value": None, "type": None},
+        "int4": {
+            "value": None,
+            "type": None,
+        },  # The string was not an integer so it converts to None.
         "float1": {"value": 3.14159, "type": float},
         "float2": {"value": 2.71828, "type": float},
         "float3": {"value": 1.61803, "type": float},
         "bool1": {"value": False, "type": bool},
         "bool2": {"value": True, "type": bool},
-        "bool3": {"value": False, "type": bool},
+        "bool3": {
+            "value": "False",
+            "type": str,
+        },  # Type "boolean" is not supported so there is no conversion from rendered string.
     }
-    for key in expected_result:
-        assert key in data_template
-
-    # Create an instance of RestNotificationService using the dict of data templates.
     config = {
         CONF_PLATFORM: DOMAIN,
         CONF_NAME: "test_notify_data_types",
@@ -143,6 +146,7 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         CONF_TITLE_PARAMETER_NAME: "title",
         CONF_TARGET_PARAMETER_NAME: "target",
         CONF_DATA_TEMPLATE: data_template,
+        CONF_DATA_TYPES: data_types,
         CONF_VERIFY_SSL: False,
         CONF_HEADERS: {
             "Content-Type": CONTENT_TYPE_JSON,
@@ -175,8 +179,9 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
 
     # Compare the (now dict) request content to the original data template.
     assert (
-        len(request_content) == len(data_template) + 3
-    )  # The +3 is for "message"+"title"+"target"
+        len(request_content)
+        == len(data_template) + 3  # The +3 is for "message"+"title"+"target"
+    )
     for key, value in expected_result.items():
         _LOGGER.debug(
             "key=%s request_content[key]=%s expected value=%s type(request_content[key])=%s expected type=%s",
@@ -187,7 +192,12 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
             value["type"],
         )
         if value["type"] is not None:
-            assert isinstance(request_content[key], value["type"]), "incorrect type"
-        assert request_content[key] == value["value"], "incorrect value"
+            assert isinstance(
+                request_content[key], value["type"]
+            ), f"incorrect type: expected {value['type']} but got {type(request_content[key])}"
+        assert (
+            request_content[key] == value["value"]
+        ), f"incorrect value: expected {value['value']} but got {request_content[key]}"
 
-    pytest.fail("THE END")
+
+#    pytest.fail("THE END"). # Force output of stdout, logging, etc.
