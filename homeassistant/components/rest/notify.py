@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from json import loads as json_loads
 import logging
 from typing import Any
 
@@ -36,6 +37,8 @@ from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
+from .const import CONF_PAYLOAD_TEMPLATE
+
 CONF_DATA = "data"
 CONF_DATA_TEMPLATE = "data_template"
 CONF_MESSAGE_PARAMETER_NAME = "message_param_name"
@@ -61,6 +64,7 @@ PLATFORM_SCHEMA = NOTIFY_PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TITLE_PARAMETER_NAME): cv.string,
         vol.Optional(CONF_DATA): vol.All(dict, cv.template_complex),
         vol.Optional(CONF_DATA_TEMPLATE): vol.All(dict, cv.template_complex),
+        vol.Optional(CONF_PAYLOAD_TEMPLATE): vol.All(dict, cv.template_complex),
         vol.Optional(CONF_AUTHENTICATION): vol.In(
             [HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION]
         ),
@@ -91,6 +95,7 @@ async def async_get_service(
     username: str | None = config.get(CONF_USERNAME)
     password: str | None = config.get(CONF_PASSWORD)
     verify_ssl: bool = config[CONF_VERIFY_SSL]
+    payload_template: Template | None = config.get(CONF_PAYLOAD_TEMPLATE)
 
     auth: httpx.Auth | None = None
     if username and password:
@@ -112,6 +117,7 @@ async def async_get_service(
         data_template,
         auth,
         verify_ssl,
+        payload_template,
     )
 
 
@@ -132,6 +138,7 @@ class RestNotificationService(BaseNotificationService):
         data_template: dict[str, Any] | None,
         auth: httpx.Auth | None,
         verify_ssl: bool,
+        payload_template: Template | None = None,
     ) -> None:
         """Initialize the service."""
         self._resource = resource
@@ -146,6 +153,7 @@ class RestNotificationService(BaseNotificationService):
         self._data_template = data_template
         self._auth = auth
         self._verify_ssl = verify_ssl
+        self._payload_template = payload_template
 
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
         """Send a message to a user."""
@@ -173,7 +181,7 @@ class RestNotificationService(BaseNotificationService):
                 if not isinstance(value, Template):
                     return value
                 value.hass = self._hass
-                result = value.async_render(kwargs, parse_result=True)
+                result = value.async_render(kwargs, parse_result=False)
                 _LOGGER.debug(
                     "_data_template_creator(value=%s) value.async_render()=%s of type=%s",
                     value,
@@ -186,6 +194,23 @@ class RestNotificationService(BaseNotificationService):
                 data.update(_data_template_creator(self._data))
             if self._data_template:
                 data.update(_data_template_creator(self._data_template))
+
+        if self._payload_template:
+            _LOGGER.debug(
+                "type(self._payload_template)=%s self._payload_template=%s",
+                type(self._payload_template),
+                self._payload_template,
+            )
+            rendered: str = self._payload_template.async_render(
+                data, parse_result=False
+            )
+            _LOGGER.debug(
+                "async_send_message() rendered=%s of type=%s",
+                rendered,
+                type(rendered),
+            )
+            data = json_loads(rendered)
+            _LOGGER.debug("json_loads(rendered)=%s", data)
 
         websession = get_async_client(self._hass, self._verify_ssl)
         if self._method == "POST":
