@@ -10,10 +10,11 @@ import respx
 from homeassistant import config as hass_config
 from homeassistant.components import notify
 from homeassistant.components.rest import DOMAIN
-from homeassistant.components.rest.const import CONF_PAYLOAD_TEMPLATE
 from homeassistant.components.rest.notify import (
     CONF_DATA_TEMPLATE,
     CONF_MESSAGE_PARAMETER_NAME,
+    CONF_TARGET_PARAMETER_NAME,
+    CONF_TITLE_PARAMETER_NAME,
     RestNotificationService,
     async_get_service,
 )
@@ -34,8 +35,8 @@ from homeassistant.setup import async_setup_component
 from tests.common import get_fixture_path
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.DEBUG)
-logging.getLogger("homeassistant.components.rest.notify").setLevel(logging.DEBUG)
+_LOGGER.setLevel(logging.INFO)
+logging.getLogger("homeassistant.components.rest.notify").setLevel(logging.INFO)
 
 
 @respx.mock
@@ -84,39 +85,68 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
 
     # Create and cross-check the inputs and expected outputs.
     data_template = {
-        "str1": Template('{{ "spam" }}', hass),
-        "int1": Template("{{ 40 + 2 }}", hass),
-        "bool1": Template("{{ False }}", hass),
-        "none1": Template("{{ None }}", hass),
+        "str1": "spam",
+        "str2": Template('{{ "egg" }}', hass),
+        "str3": "39",
+        "str4": Template('{{ "40" }}', hass),
+        "str5": Template('{{ "True" }}', hass),
+        "int1": 41,
+        "int2": Template("{{ 42 }}", hass),
+        "int3": Template("{{ 40 + 3 }}", hass),
+        "int4": "4x4",
+        "float1": 3.14159,
+        "float2": Template("{{ 2.71828 }}", hass),
+        "float3": "1.61803",
+        "bool1": False,
+        "bool2": Template("{{ True }}", hass),
+        "bool3": Template("{{ not True }}", hass),
+        "types": {
+            "int1": "int",
+            "int2": "int",
+            "int3": "int",
+            "int4": "int",
+            "float1": "float",
+            "float2": "float",
+            "float3": "float",
+            "bool1": "bool",
+            "bool2": "bool",
+            "bool3": "bool",
+        },
     }
-    expected_results = {
-        "message": {"value": "my message", "type": str},
+    expected_result = {
         "str1": {"value": "spam", "type": str},
-        "int1": {"value": 42, "type": int},
+        "str2": {"value": "egg", "type": str},
+        "str3": {"value": "39", "type": str},
+        "str4": {"value": "40", "type": str},
+        "str5": {"value": "True", "type": str},
+        "int1": {"value": 41, "type": int},
+        "int2": {"value": 42, "type": int},
+        "int3": {"value": 43, "type": int},
+        "int4": {"value": None, "type": None},
+        "float1": {"value": 3.14159, "type": float},
+        "float2": {"value": 2.71828, "type": float},
+        "float3": {"value": 1.61803, "type": float},
         "bool1": {"value": False, "type": bool},
-        "none1": {"value": None, "type": None},
+        "bool2": {"value": True, "type": bool},
+        "bool3": {"value": False, "type": bool},
     }
-    assert len(data_template) + 1 == len(expected_results)  # The +1 is for "message".
-    for key in data_template:
-        assert expected_results[key] is not None
+    for key in expected_result:
+        assert key in data_template
 
-    # Consider a payload_template containing the message plus everything from data_template.
-    payload_template = "{{ '{ \"message\": \"' ~ message ~ '\", \"str1\": \"' ~ str1 ~ '\", \"int1\": ' ~ int1 ~ ', \"bool1\": ' ~ (bool1|lower) ~ ', \"none1\": ' ~ iif(none1=='None','null',none1) ~ ' }' }}"
-    _LOGGER.debug("payload_template=%s", payload_template)
-
-    # Create an instance of RestNotificationService using the dict of data templates and the payload template.
+    # Create an instance of RestNotificationService using the dict of data templates.
     config = {
         CONF_PLATFORM: DOMAIN,
         CONF_NAME: "test_notify_data_types",
         CONF_RESOURCE: resource,
         CONF_METHOD: "POST_JSON",
         CONF_MESSAGE_PARAMETER_NAME: "message",
+        CONF_TITLE_PARAMETER_NAME: "title",
+        CONF_TARGET_PARAMETER_NAME: "target",
         CONF_DATA_TEMPLATE: data_template,
         CONF_VERIFY_SSL: False,
         CONF_HEADERS: {
             "Content-Type": CONTENT_TYPE_JSON,
         },
-        CONF_PAYLOAD_TEMPLATE: Template(payload_template, hass),
     }
     rns: RestNotificationService = await async_get_service(
         hass,
@@ -125,7 +155,11 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     # Send an HTTP request and confirm that it was mocked by RESPX.
-    await rns.async_send_message(message="my message")
+    await rns.async_send_message(
+        message="my message",
+        title="My Title",
+        target=["mytarget"],
+    )
     await hass.async_block_till_done()
     assert route.called
 
@@ -137,26 +171,23 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
             "Request content is invalid JSON: %s", route.calls.last.request.content
         )
         pytest.fail("request content is invalid JSON")
-    _LOGGER.debug(
-        "type(request_content)=%s request_content=%s",
-        type(request_content),
-        request_content,
-    )
     assert isinstance(request_content, dict)
 
     # Compare the (now dict) request content to the original data template.
-    assert len(request_content) == len(expected_results)
-    for key, value in request_content.items():
+    assert (
+        len(request_content) == len(data_template) + 3
+    )  # The +3 is for "message"+"title"+"target"
+    for key, value in expected_result.items():
         _LOGGER.debug(
-            "key=%s type(value)=%s expected_results[key]['type']=%s value=%s expected_results[key]['value']=%s",
+            "key=%s request_content[key]=%s expected value=%s type(request_content[key])=%s expected type=%s",
             key,
-            type(value),
-            expected_results[key]["type"],
-            value,
-            expected_results[key]["value"],
+            request_content[key],
+            value["value"],
+            type(request_content[key]),
+            value["type"],
         )
-        if expected_results[key]["value"] is not None:
-            assert isinstance(value, expected_results[key]["type"]), "incorrect type"
-        assert value == expected_results[key]["value"], "incorrect value for key=" + key
+        if value["type"] is not None:
+            assert isinstance(request_content[key], value["type"]), "incorrect type"
+        assert request_content[key] == value["value"], "incorrect value"
 
     pytest.fail("THE END")

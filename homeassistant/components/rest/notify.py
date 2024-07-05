@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from json import loads as json_loads
 import logging
 from typing import Any
 
@@ -37,10 +36,9 @@ from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.template import Template
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from .const import CONF_PAYLOAD_TEMPLATE
-
 CONF_DATA = "data"
 CONF_DATA_TEMPLATE = "data_template"
+CONF_DATA_TYPES = "types"
 CONF_MESSAGE_PARAMETER_NAME = "message_param_name"
 CONF_TARGET_PARAMETER_NAME = "target_param_name"
 CONF_TITLE_PARAMETER_NAME = "title_param_name"
@@ -64,7 +62,6 @@ PLATFORM_SCHEMA = NOTIFY_PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TITLE_PARAMETER_NAME): cv.string,
         vol.Optional(CONF_DATA): vol.All(dict, cv.template_complex),
         vol.Optional(CONF_DATA_TEMPLATE): vol.All(dict, cv.template_complex),
-        vol.Optional(CONF_PAYLOAD_TEMPLATE): vol.All(dict, cv.template_complex),
         vol.Optional(CONF_AUTHENTICATION): vol.In(
             [HTTP_BASIC_AUTHENTICATION, HTTP_DIGEST_AUTHENTICATION]
         ),
@@ -95,8 +92,6 @@ async def async_get_service(
     username: str | None = config.get(CONF_USERNAME)
     password: str | None = config.get(CONF_PASSWORD)
     verify_ssl: bool = config[CONF_VERIFY_SSL]
-    payload_template: Template | None = config.get(CONF_PAYLOAD_TEMPLATE)
-
     auth: httpx.Auth | None = None
     if username and password:
         if config.get(CONF_AUTHENTICATION) == HTTP_DIGEST_AUTHENTICATION:
@@ -117,7 +112,6 @@ async def async_get_service(
         data_template,
         auth,
         verify_ssl,
-        payload_template,
     )
 
 
@@ -138,7 +132,6 @@ class RestNotificationService(BaseNotificationService):
         data_template: dict[str, Any] | None,
         auth: httpx.Auth | None,
         verify_ssl: bool,
-        payload_template: Template | None = None,
     ) -> None:
         """Initialize the service."""
         self._resource = resource
@@ -153,7 +146,13 @@ class RestNotificationService(BaseNotificationService):
         self._data_template = data_template
         self._auth = auth
         self._verify_ssl = verify_ssl
-        self._payload_template = payload_template
+        self._data_types = {}
+        if self._data and isinstance(self._data, dict):
+            self._data_types = dict(self._data[CONF_DATA_TYPES])
+            del self._data[CONF_DATA_TYPES]
+        if self._data_template and isinstance(self._data_template, dict):
+            self._data_types = dict(self._data_template[CONF_DATA_TYPES])
+            del self._data_template[CONF_DATA_TYPES]
 
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
         """Send a message to a user."""
@@ -170,47 +169,78 @@ class RestNotificationService(BaseNotificationService):
         if self._data_template or self._data:
             kwargs[ATTR_MESSAGE] = message
 
-            def _data_template_creator(value: Any) -> Any:
+            def _data_template_creator(value: Any, data_type=None) -> Any:
                 """Recursive template creator helper function."""
                 if isinstance(value, list):
                     return [_data_template_creator(item) for item in value]
                 if isinstance(value, dict):
                     return {
-                        key: _data_template_creator(item) for key, item in value.items()
+                        key: _data_template_creator(item, self._data_types.get(key))
+                        for key, item in value.items()
                     }
                 if not isinstance(value, Template):
-                    return value
-                value.hass = self._hass
-                result = value.async_render(kwargs, parse_result=False)
-                _LOGGER.debug(
-                    "_data_template_creator(value=%s) value.async_render()=%s of type=%s",
-                    value,
-                    result,
-                    type(result),
-                )
+                    result = value
+                else:
+                    value.hass = self._hass
+                    result = value.async_render(kwargs, parse_result=False)
+                    _LOGGER.debug(
+                        "_data_template_creator(value=%s) value.async_render()=%s of type=%s",
+                        value,
+                        result,
+                        type(result),
+                    )
+                if not data_type:
+                    return result
+                str_to_type = {
+                    "int": int,
+                    "float": float,
+                    "bool": bool,
+                    "str": str,
+                }
+                if data_type not in str_to_type:
+                    _LOGGER.warning("Ignoring unsupported data type: %s", data_type)
+                elif isinstance(result, str_to_type[data_type]):
+                    _LOGGER.debug(
+                        "_data_template_creator: data_type=%s already type(result)=%s result=%s",
+                        data_type,
+                        type(result),
+                        result,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "_data_template_creator: data_type=%s before type(result)=%s result=%s",
+                        data_type,
+                        type(result),
+                        result,
+                    )
+                    data_type = data_type.lower()
+                    try:
+                        if data_type == "int":
+                            result = int(result)
+                        elif data_type == "float":
+                            result = float(result)
+                        elif data_type == "bool":
+                            result = result.lower() == "true"
+                        elif data_type == "str":
+                            pass
+                        else:
+                            _LOGGER.error("unknown data type: %s", data_type)
+                            result = None
+                    except ValueError:
+                        _LOGGER.error("Cannot convert '%s' to %s", result, data_type)
+                        result = None
+                    _LOGGER.debug(
+                        "_data_template_creator: data_type=%s after type(result)=%s result=%s",
+                        data_type,
+                        type(result),
+                        result,
+                    )
                 return result
 
             if self._data:
                 data.update(_data_template_creator(self._data))
             if self._data_template:
                 data.update(_data_template_creator(self._data_template))
-
-        if self._payload_template:
-            _LOGGER.debug(
-                "type(self._payload_template)=%s self._payload_template=%s",
-                type(self._payload_template),
-                self._payload_template,
-            )
-            rendered: str = self._payload_template.async_render(
-                data, parse_result=False
-            )
-            _LOGGER.debug(
-                "async_send_message() rendered=%s of type=%s",
-                rendered,
-                type(rendered),
-            )
-            data = json_loads(rendered)
-            _LOGGER.debug("json_loads(rendered)=%s", data)
 
         websession = get_async_client(self._hass, self._verify_ssl)
         if self._method == "POST":
