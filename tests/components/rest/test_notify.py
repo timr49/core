@@ -123,19 +123,15 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "int1": {"value": 41, "type": int},
         "int2": {"value": 42, "type": int},
         "int3": {"value": 43, "type": int},
-        "int4": {
-            "value": None,
-            "type": None,
-        },  # The string was not an integer so it converts to None.
+        # The string is not an integer so there is no conversion.
+        "int4": {"value": "4x4", "type": str},
         "float1": {"value": 3.14159, "type": float},
         "float2": {"value": 2.71828, "type": float},
         "float3": {"value": 1.61803, "type": float},
         "bool1": {"value": False, "type": bool},
         "bool2": {"value": True, "type": bool},
-        "bool3": {
-            "value": "False",
-            "type": str,
-        },  # Type "boolean" is not supported so there is no conversion from rendered string.
+        # Type "boolean" is not supported so there is no conversion from rendered string.
+        "bool3": {"value": "False", "type": str},
     }
     config = {
         CONF_PLATFORM: DOMAIN,

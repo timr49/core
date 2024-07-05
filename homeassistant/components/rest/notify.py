@@ -177,56 +177,59 @@ class RestNotificationService(BaseNotificationService):
                         for key, item in value.items()
                     }
                 if not isinstance(value, Template):
-                    result = value
+                    rendered = value
                 else:
                     value.hass = self._hass
-                    result = value.async_render(kwargs, parse_result=False)
+                    rendered = value.async_render(kwargs, parse_result=False)
                     _LOGGER.debug(
                         "_data_template_creator(value=%s) value.async_render()=%s of type=%s",
                         value,
-                        result,
-                        type(result),
+                        rendered,
+                        type(rendered),
                     )
                 if not data_type:
-                    return result
+                    return rendered
                 str_to_type = {
                     "int": int,
                     "float": float,
                     "bool": bool,
                     "str": str,
                 }
+                data_type = data_type.lower()
                 if data_type not in str_to_type:
                     _LOGGER.warning("Ignoring unsupported data type: %s", data_type)
-                elif isinstance(result, str_to_type[data_type]):
+                    result = rendered
+                elif isinstance(rendered, str_to_type[data_type]):
                     _LOGGER.debug(
-                        "_data_template_creator: data_type=%s already type(result)=%s result=%s",
+                        "_data_template_creator: value %s is already data type %s",
+                        rendered,
                         data_type,
-                        type(result),
-                        result,
                     )
+                    result = rendered
                 else:
                     _LOGGER.debug(
-                        "_data_template_creator: data_type=%s before type(result)=%s result=%s",
+                        "_data_template_creator: data_type=%s before type(rendered)=%s rendered=%s",
                         data_type,
-                        type(result),
-                        result,
+                        type(rendered),
+                        rendered,
                     )
-                    data_type = data_type.lower()
                     try:
                         if data_type == "int":
-                            result = int(result)
+                            result = int(rendered)
                         elif data_type == "float":
-                            result = float(result)
+                            result = float(rendered)
                         elif data_type == "bool":
-                            result = result.lower() == "true"
+                            result = rendered.lower() == "true"
                         elif data_type == "str":
-                            pass
+                            result = rendered
                         else:
                             _LOGGER.error("unknown data type: %s", data_type)
                             result = None
                     except ValueError:
-                        _LOGGER.error("Cannot convert '%s' to %s", result, data_type)
-                        result = None
+                        _LOGGER.error(
+                            "Cannot convert '%s' to type %s", rendered, data_type
+                        )
+                        result = rendered
                     _LOGGER.debug(
                         "_data_template_creator: data_type=%s after type(result)=%s result=%s",
                         data_type,
