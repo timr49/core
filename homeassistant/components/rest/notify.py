@@ -167,14 +167,36 @@ class RestNotificationService(BaseNotificationService):
         if self._data_template or self._data:
             kwargs[ATTR_MESSAGE] = message
 
-            def _data_template_creator(value: Any, data_type=None) -> Any:
+            def _data_template_creator(value: Any, data_type: Any = None) -> Any:
                 """Recursive template creator helper function."""
                 if isinstance(value, list):
+                    if isinstance(data_type, list):
+                        return [
+                            _data_template_creator(
+                                value[index],
+                                data_type[index] if index < len(data_type) else None,
+                            )
+                            for index in range(len(value))
+                        ]
+                    if data_type is not None:
+                        _LOGGER.warning(
+                            "Ignoring the remaining data types because their structure does not match that of the data (list)"
+                        )
                     return [_data_template_creator(item) for item in value]
                 if isinstance(value, dict):
+                    if isinstance(data_type, dict):
+                        result = {}
+                        for key, item in value.items():
+                            result.update(
+                                {key: _data_template_creator(item, data_type.get(key))}
+                            )
+                        return result
+                    if data_type is not None:
+                        _LOGGER.warning(
+                            "Ignoring the remaining data types because their structure does not match that of the data (dict)"
+                        )
                     return {
-                        key: _data_template_creator(item, self._data_types.get(key))
-                        for key, item in value.items()
+                        key: _data_template_creator(item) for key, item in value.items()
                     }
                 if not isinstance(value, Template):
                     rendered = value
@@ -239,9 +261,11 @@ class RestNotificationService(BaseNotificationService):
                 return result
 
             if self._data:
-                data.update(_data_template_creator(self._data))
+                data.update(_data_template_creator(self._data, self._data_types))
             if self._data_template:
-                data.update(_data_template_creator(self._data_template))
+                data.update(
+                    _data_template_creator(self._data_template, self._data_types)
+                )
 
         websession = get_async_client(self._hass, self._verify_ssl)
         if self._method == "POST":

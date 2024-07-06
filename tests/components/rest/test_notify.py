@@ -101,10 +101,10 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool1": False,
         "bool2": Template("{{ True }}", hass),
         "bool3": Template("{{ not True }}", hass),
-        "dict1": {"spam": "eggs", "answer": 42},
-        "list1": ["spam", 42, 3.14159, True],
         "null1": None,
         "null2": 42,
+        "dict1": {"spam": "eggs", "answer": 42, "null3": None, "null4": "anything"},
+        "list1": ["spam", 42, 3.14159, True, None, "anything else"],
     }
     data_types = {
         "int1": "int",
@@ -118,6 +118,8 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool2": "bool",
         "bool3": "boolean",  # Type "boolean" is not supported.
         "null2": "null",  # Force result to be null regardless of value.
+        "dict1": {"null4": "null"},
+        "list1": ["str", "int", "float", "bool", "null", "null"],
     }
     expected_result = {
         "str1": {"value": "spam", "type": str},
@@ -139,8 +141,11 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool3": {"value": "False", "type": str},
         "null1": {"value": None, "type": None},
         "null2": {"value": None, "type": None},
-        "dict1": {"value": {"spam": "eggs", "answer": 42}, "type": dict},
-        "list1": {"value": ["spam", 42, 3.14159, True], "type": list},
+        "dict1": {
+            "value": {"spam": "eggs", "answer": 42, "null3": None, "null4": None},
+            "type": dict,
+        },
+        "list1": {"value": ["spam", 42, 3.14159, True, None, None], "type": list},
     }
     for key in data_types:
         assert key in expected_result
@@ -213,4 +218,4 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
             request_content[key] == value["value"]
         ), f"incorrect value for {key}: expected {value['value']} but got {request_content[key]}"
 
-    pytest.fail("THE END")  # Force output of stdout, logging, etc.
+    # pytest.fail("THE END")  # Force output of stdout, logging, etc.

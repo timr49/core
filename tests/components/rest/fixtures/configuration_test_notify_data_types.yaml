@@ -32,17 +32,30 @@ notify:
       dict1:
         spam: "eggs"
         answer: 42
+        null3: null
+        null4: "anything"
       list1:
         - "spam"
         - 42
         - 3.14159
         - true
+        - null
+        - "anything else"
     data_types:
       int2: int
       int3: int
       int4: int
       float2: float
       float3: float
+      null2: "null"
       bool2: bool
       bool3: boolean
-      null2: "null"
+      dict1:
+        null4: "null"
+      list1:
+        - "str"
+        - "int"
+        - "float"
+        - "bool"
+        - "null"
+        - "null"
