@@ -193,14 +193,22 @@ class RestNotificationService(BaseNotificationService):
                     "str": str,
                     "int": int,
                     "float": float,
-                    "dict": dict,
-                    "list": list,
                     "bool": bool,
+                    "null": None,
                 }
                 data_type = data_type.lower()
+                _LOGGER.debug(
+                    'data_type=="%s" data_type in str_to_type=%s str_to_type[data_type]=%s',
+                    data_type,
+                    data_type in str_to_type,
+                    str_to_type.get(data_type, "N/A"),
+                )
                 if data_type not in str_to_type:
-                    _LOGGER.warning("Ignoring unsupported data type: %s", data_type)
+                    _LOGGER.error("Ignoring unsupported data type: %s", data_type)
                     result = rendered
+                elif data_type == "null":
+                    result = None
+                    _LOGGER.debug('data_type=="%s" so result=%s', data_type, result)
                 elif isinstance(rendered, str_to_type[data_type]):
                     _LOGGER.debug(
                         "_data_template_creator: value %s is already data type %s",
@@ -216,21 +224,7 @@ class RestNotificationService(BaseNotificationService):
                         rendered,
                     )
                     try:
-                        if data_type == "str":
-                            result = rendered
-                        elif data_type == "int":
-                            result = int(rendered)
-                        elif data_type == "float":
-                            result = float(rendered)
-                        elif data_type == "dict":
-                            result = dict(rendered)
-                        elif data_type == "list":
-                            result = list(rendered)
-                        elif data_type == "bool":
-                            result = rendered.lower() == "true"
-                        else:
-                            _LOGGER.error("Unknown data type: %s", data_type)
-                            result = None
+                        result = str_to_type[data_type](rendered)
                     except ValueError:
                         _LOGGER.error(
                             "Cannot convert '%s' to type %s", rendered, data_type

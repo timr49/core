@@ -103,6 +103,8 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool3": Template("{{ not True }}", hass),
         "dict1": {"spam": "eggs", "answer": 42},
         "list1": ["spam", 42, 3.14159, True],
+        "null1": None,
+        "null2": 42,
     }
     data_types = {
         "int1": "int",
@@ -115,8 +117,7 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool1": "bool",
         "bool2": "bool",
         "bool3": "boolean",  # Type "boolean" is not supported.
-        "dict1": "dict",
-        "list1": "list",
+        "null2": "null",  # Force result to be null regardless of value.
     }
     expected_result = {
         "str1": {"value": "spam", "type": str},
@@ -127,7 +128,7 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "int1": {"value": 41, "type": int},
         "int2": {"value": 42, "type": int},
         "int3": {"value": 43, "type": int},
-        # The string is not an integer so there is no conversion.
+        # The value is not an integer so there is no conversion.
         "int4": {"value": "4x4", "type": str},
         "float1": {"value": 3.14159, "type": float},
         "float2": {"value": 2.71828, "type": float},
@@ -136,6 +137,8 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool2": {"value": True, "type": bool},
         # Type "boolean" is not supported so there is no conversion from rendered string.
         "bool3": {"value": "False", "type": str},
+        "null1": {"value": None, "type": None},
+        "null2": {"value": None, "type": None},
         "dict1": {"value": {"spam": "eggs", "answer": 42}, "type": dict},
         "list1": {"value": ["spam", 42, 3.14159, True], "type": list},
     }
@@ -175,6 +178,9 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
     assert route.called
 
     # Retrieve the most recent request content and convert it from stringified json to a dict for ready access.
+    _LOGGER.debug(
+        "route.calls.last.request.content=%s", route.calls.last.request.content
+    )
     try:
         request_content = json.loads(route.calls.last.request.content)
     except json.JSONDecodeError:
@@ -202,9 +208,9 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         if value["type"] is not None:
             assert isinstance(
                 request_content[key], value["type"]
-            ), f"incorrect type: expected {value['type']} but got {type(request_content[key])}"
+            ), f"incorrect type for {key}: expected {value['type']} but got {type(request_content[key])}"
         assert (
             request_content[key] == value["value"]
-        ), f"incorrect value: expected {value['value']} but got {request_content[key]}"
+        ), f"incorrect value for {key}: expected {value['value']} but got {request_content[key]}"
 
     pytest.fail("THE END")  # Force output of stdout, logging, etc.

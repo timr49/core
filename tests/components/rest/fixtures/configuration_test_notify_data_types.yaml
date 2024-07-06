@@ -24,6 +24,8 @@ notify:
       float1: 3.14159
       float2: "{{ 2.71828 }}"
       float3: "1.61803"
+      null1: null
+      null2: 42
       bool1: false
       bool2: "{{ True }}"
       bool3: "{{ not True }}"
@@ -43,3 +45,4 @@ notify:
       float3: float
       bool2: bool
       bool3: boolean
+      null2: "null"
