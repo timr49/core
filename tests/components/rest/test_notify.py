@@ -36,7 +36,7 @@ from homeassistant.setup import async_setup_component
 from tests.common import get_fixture_path
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.INFO)
+_LOGGER.setLevel(logging.DEBUG)
 logging.getLogger("homeassistant.components.rest.notify").setLevel(logging.DEBUG)
 
 
@@ -101,6 +101,8 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool1": False,
         "bool2": Template("{{ True }}", hass),
         "bool3": Template("{{ not True }}", hass),
+        "dict1": {"spam": "eggs", "answer": 42},
+        "list1": ["spam", 42, 3.14159, True],
     }
     data_types = {
         "int1": "int",
@@ -113,6 +115,8 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool1": "bool",
         "bool2": "bool",
         "bool3": "boolean",  # Type "boolean" is not supported.
+        "dict1": "dict",
+        "list1": "list",
     }
     expected_result = {
         "str1": {"value": "spam", "type": str},
@@ -132,7 +136,14 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         "bool2": {"value": True, "type": bool},
         # Type "boolean" is not supported so there is no conversion from rendered string.
         "bool3": {"value": "False", "type": str},
+        "dict1": {"value": {"spam": "eggs", "answer": 42}, "type": dict},
+        "list1": {"value": ["spam", 42, 3.14159, True], "type": list},
     }
+    for key in data_types:
+        assert key in expected_result
+        assert "value" in expected_result[key]
+        assert "type" in expected_result[key]
+
     config = {
         CONF_PLATFORM: DOMAIN,
         CONF_NAME: "test_notify_data_types",
@@ -179,9 +190,10 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
         == len(data_template) + 3  # The +3 is for "message"+"title"+"target"
     )
     for key, value in expected_result.items():
+        _LOGGER.debug("key=%s value=%s", key, value)
+        assert key in request_content
         _LOGGER.debug(
-            "key=%s request_content[key]=%s expected value=%s type(request_content[key])=%s expected type=%s",
-            key,
+            "request_content[key]=%s expected value=%s type(request_content[key])=%s expected type=%s",
             request_content[key],
             value["value"],
             type(request_content[key]),
@@ -195,5 +207,4 @@ async def test_notify_data_types(hass: HomeAssistant) -> None:
             request_content[key] == value["value"]
         ), f"incorrect value: expected {value['value']} but got {request_content[key]}"
 
-
-#    pytest.fail("THE END"). # Force output of stdout, logging, etc.
+    pytest.fail("THE END")  # Force output of stdout, logging, etc.

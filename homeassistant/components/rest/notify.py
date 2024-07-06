@@ -190,10 +190,12 @@ class RestNotificationService(BaseNotificationService):
                 if not data_type:
                     return rendered
                 str_to_type = {
+                    "str": str,
                     "int": int,
                     "float": float,
+                    "dict": dict,
+                    "list": list,
                     "bool": bool,
-                    "str": str,
                 }
                 data_type = data_type.lower()
                 if data_type not in str_to_type:
@@ -214,16 +216,20 @@ class RestNotificationService(BaseNotificationService):
                         rendered,
                     )
                     try:
-                        if data_type == "int":
+                        if data_type == "str":
+                            result = rendered
+                        elif data_type == "int":
                             result = int(rendered)
                         elif data_type == "float":
                             result = float(rendered)
+                        elif data_type == "dict":
+                            result = dict(rendered)
+                        elif data_type == "list":
+                            result = list(rendered)
                         elif data_type == "bool":
                             result = rendered.lower() == "true"
-                        elif data_type == "str":
-                            result = rendered
                         else:
-                            _LOGGER.error("unknown data type: %s", data_type)
+                            _LOGGER.error("Unknown data type: %s", data_type)
                             result = None
                     except ValueError:
                         _LOGGER.error(

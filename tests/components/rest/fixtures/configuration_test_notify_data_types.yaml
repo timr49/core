@@ -27,6 +27,14 @@ notify:
       bool1: false
       bool2: "{{ True }}"
       bool3: "{{ not True }}"
+      dict1:
+        spam: "eggs"
+        answer: 42
+      list1:
+        - "spam"
+        - 42
+        - 3.14159
+        - true
     data_types:
       int2: int
       int3: int
