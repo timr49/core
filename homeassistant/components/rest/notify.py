@@ -152,60 +152,6 @@ class RestNotificationService(BaseNotificationService):
         self._verify_ssl = verify_ssl
         self._data_types = data_types
 
-    def _convert(self, value: str, data_type: str) -> Any:
-        """Convert value from string to type data_type."""
-        data_type = data_type.lower()
-        str_to_type = {
-            "str": str,
-            "int": int,
-            "float": float,
-            "bool": bool,
-            "null": str,  # Use str rather than None to avoid mypy's 'error: "None" not callable'.
-        }
-        _LOGGER.debug(
-            'data_type=="%s" data_type in str_to_type=%s str_to_type[data_type]=%s',
-            data_type,
-            data_type in str_to_type,
-            str_to_type.get(data_type, "N/A"),
-        )
-        if data_type not in str_to_type:
-            # The specified data type is unsupported.
-            _LOGGER.error("Ignoring unsupported data type: %s", data_type)
-            result = value
-        elif data_type == "null":
-            # The specified data type is "null" so force a null value.
-            result = None
-            _LOGGER.debug('data_type=="%s" so result=%s', data_type, result)
-        elif isinstance(value, str_to_type[data_type]):
-            # The value is already of the specific data type - either a template was not used or a data type of "str" is specified.
-            _LOGGER.debug(
-                "_data_template_creator: data_type=%s no conversion type(value)=%s value=%s",
-                data_type,
-                type(value),
-                value,
-            )
-            result = value
-        else:
-            # Conversion of the value to the specified data type is to be attempted.
-            _LOGGER.debug(
-                "_data_template_creator: data_type=%s before conversion type(value)=%s value=%s",
-                data_type,
-                type(value),
-                value,
-            )
-            try:
-                result = str_to_type[data_type](value)
-            except ValueError:
-                _LOGGER.error("Cannot convert '%s' to type %s", value, data_type)
-                result = value
-            _LOGGER.debug(
-                "_data_template_creator: data_type=%s after conversion type(result)=%s result=%s",
-                data_type,
-                type(result),
-                result,
-            )
-        return result
-
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
         """Send a message to a user."""
 
@@ -279,7 +225,7 @@ class RestNotificationService(BaseNotificationService):
                     )
                     return rendered
 
-                return self._convert(rendered, data_type)
+                return _convert(rendered, data_type)
 
             if self._data:
                 data.update(_data_template_creator(self._data, self._data_types))
@@ -349,3 +295,58 @@ class RestNotificationService(BaseNotificationService):
             _LOGGER.debug(
                 "Response %d: %s:", response.status_code, response.reason_phrase
             )
+
+
+def _convert(value: str, data_type: str) -> Any:
+    """Convert value from string to type data_type."""
+    data_type = data_type.lower()
+    str_to_type = {
+        "str": str,
+        "int": int,
+        "float": float,
+        "bool": bool,
+        "null": str,  # Use str rather than None to avoid mypy's 'error: "None" not callable'.
+    }
+    _LOGGER.debug(
+        'data_type=="%s" data_type in str_to_type=%s str_to_type[data_type]=%s',
+        data_type,
+        data_type in str_to_type,
+        str_to_type.get(data_type, "N/A"),
+    )
+    if data_type not in str_to_type:
+        # The specified data type is unsupported.
+        _LOGGER.error("Ignoring unsupported data type: %s", data_type)
+        result = value
+    elif data_type == "null":
+        # The specified data type is "null" so force a null value.
+        result = None
+        _LOGGER.debug('data_type=="%s" so result=%s', data_type, result)
+    elif isinstance(value, str_to_type[data_type]):
+        # The value is already of the specific data type - either a template was not used or a data type of "str" is specified.
+        _LOGGER.debug(
+            "_data_template_creator: data_type=%s no conversion type(value)=%s value=%s",
+            data_type,
+            type(value),
+            value,
+        )
+        result = value
+    else:
+        # Conversion of the value to the specified data type is to be attempted.
+        _LOGGER.debug(
+            "_data_template_creator: data_type=%s before conversion type(value)=%s value=%s",
+            data_type,
+            type(value),
+            value,
+        )
+        try:
+            result = str_to_type[data_type](value)
+        except ValueError:
+            _LOGGER.error("Cannot convert '%s' to type %s", value, data_type)
+            result = value
+        _LOGGER.debug(
+            "_data_template_creator: data_type=%s after conversion type(result)=%s result=%s",
+            data_type,
+            type(result),
+            result,
+        )
+    return result
