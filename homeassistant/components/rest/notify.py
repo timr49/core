@@ -150,10 +150,65 @@ class RestNotificationService(BaseNotificationService):
         self._data_template = data_template
         self._auth = auth
         self._verify_ssl = verify_ssl
-        self._data_types = data_types if data_types else {}
+        self._data_types = data_types
+
+    def _convert(self, value: str, data_type: str) -> Any:
+        """Convert value from string to type data_type."""
+        data_type = data_type.lower()
+        str_to_type = {
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "null": str,  # Use str rather than None to avoid mypy's 'error: "None" not callable'.
+        }
+        _LOGGER.debug(
+            'data_type=="%s" data_type in str_to_type=%s str_to_type[data_type]=%s',
+            data_type,
+            data_type in str_to_type,
+            str_to_type.get(data_type, "N/A"),
+        )
+        if data_type not in str_to_type:
+            # The specified data type is unsupported.
+            _LOGGER.error("Ignoring unsupported data type: %s", data_type)
+            result = value
+        elif data_type == "null":
+            # The specified data type is "null" so force a null value.
+            result = None
+            _LOGGER.debug('data_type=="%s" so result=%s', data_type, result)
+        elif isinstance(value, str_to_type[data_type]):
+            # The value is already of the specific data type - either a template was not used or a data type of "str" is specified.
+            _LOGGER.debug(
+                "_data_template_creator: data_type=%s no conversion type(value)=%s value=%s",
+                data_type,
+                type(value),
+                value,
+            )
+            result = value
+        else:
+            # Conversion of the value to the specified data type is to be attempted.
+            _LOGGER.debug(
+                "_data_template_creator: data_type=%s before conversion type(value)=%s value=%s",
+                data_type,
+                type(value),
+                value,
+            )
+            try:
+                result = str_to_type[data_type](value)
+            except ValueError:
+                _LOGGER.error("Cannot convert '%s' to type %s", value, data_type)
+                result = value
+            _LOGGER.debug(
+                "_data_template_creator: data_type=%s after conversion type(result)=%s result=%s",
+                data_type,
+                type(result),
+                result,
+            )
+        return result
 
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
         """Send a message to a user."""
+
         data = {self._message_param_name: message}
 
         if self._title_param_name is not None:
@@ -180,7 +235,7 @@ class RestNotificationService(BaseNotificationService):
                         ]
                     if data_type is not None:
                         _LOGGER.warning(
-                            "Ignoring the remaining data types because their structure does not match that of the data (list)"
+                            "Ignoring the remaining data types because its structure does not align with the data (list)"
                         )
                     return [_data_template_creator(item) for item in value]
                 if isinstance(value, dict):
@@ -193,7 +248,7 @@ class RestNotificationService(BaseNotificationService):
                         return result
                     if data_type is not None:
                         _LOGGER.warning(
-                            "Ignoring the remaining data types because their structure does not match that of the data (dict)"
+                            "Ignoring the remaining data types because its structure does not align with the data (dict)"
                         )
                     return {
                         key: _data_template_creator(item) for key, item in value.items()
@@ -209,56 +264,22 @@ class RestNotificationService(BaseNotificationService):
                         rendered,
                         type(rendered),
                     )
+
                 if not data_type:
                     return rendered
-                str_to_type = {
-                    "str": str,
-                    "int": int,
-                    "float": float,
-                    "bool": bool,
-                    "null": None,
-                }
-                data_type = data_type.lower()
-                _LOGGER.debug(
-                    'data_type=="%s" data_type in str_to_type=%s str_to_type[data_type]=%s',
-                    data_type,
-                    data_type in str_to_type,
-                    str_to_type.get(data_type, "N/A"),
-                )
-                if data_type not in str_to_type:
-                    _LOGGER.error("Ignoring unsupported data type: %s", data_type)
-                    result = rendered
-                elif data_type == "null":
-                    result = None
-                    _LOGGER.debug('data_type=="%s" so result=%s', data_type, result)
-                elif isinstance(rendered, str_to_type[data_type]):
+                if not isinstance(data_type, str):
                     _LOGGER.debug(
-                        "_data_template_creator: value %s is already data type %s",
+                        "type(data_type)=%s type(rendered)=%s",
+                        type(data_type),
                         rendered,
-                        data_type,
                     )
-                    result = rendered
-                else:
-                    _LOGGER.debug(
-                        "_data_template_creator: data_type=%s before type(rendered)=%s rendered=%s",
-                        data_type,
+                    _LOGGER.warning(
+                        "Ignoring the remaining data type because its structure does not align with the data (%s)",
                         type(rendered),
-                        rendered,
                     )
-                    try:
-                        result = str_to_type[data_type](rendered)
-                    except ValueError:
-                        _LOGGER.error(
-                            "Cannot convert '%s' to type %s", rendered, data_type
-                        )
-                        result = rendered
-                    _LOGGER.debug(
-                        "_data_template_creator: data_type=%s after type(result)=%s result=%s",
-                        data_type,
-                        type(result),
-                        result,
-                    )
-                return result
+                    return rendered
+
+                return self._convert(rendered, data_type)
 
             if self._data:
                 data.update(_data_template_creator(self._data, self._data_types))
