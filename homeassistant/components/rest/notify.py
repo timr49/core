@@ -150,7 +150,7 @@ class RestNotificationService(BaseNotificationService):
         self._data_template = data_template
         self._auth = auth
         self._verify_ssl = verify_ssl
-        self._data_types = data_types
+        self._data_types = data_types if self._method == "POST_JSON" else None
 
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
         """Send a message to a user."""
@@ -235,6 +235,13 @@ class RestNotificationService(BaseNotificationService):
                 )
 
         websession = get_async_client(self._hass, self._verify_ssl)
+        _LOGGER.debug(
+            "async_send_message() method=%s headers=%s params=%s data=%s",
+            self._method,
+            self._headers,
+            self._params,
+            data,
+        )
         if self._method == "POST":
             response = await websession.post(
                 self._resource,
@@ -245,7 +252,6 @@ class RestNotificationService(BaseNotificationService):
                 auth=self._auth or httpx.USE_CLIENT_DEFAULT,
             )
         elif self._method == "POST_JSON":
-            _LOGGER.debug("async_send_message() POSTing JSON data=%s", data)
             response = await websession.post(
                 self._resource,
                 headers=self._headers,
